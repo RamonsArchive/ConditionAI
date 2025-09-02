@@ -12,83 +12,90 @@ print(f"🚀 Loading CLIP model on {device.upper()}...")
 model, preprocess = clip.load("ViT-L/14", device=device)
 print("✅ Model loaded successfully!")
 
-def detect_object_type(image_url):
-    """Detect what type of object is in the image using CLIP image-only approach"""
+def detect_object_with_llama(title):
+    """Use local Llama model to detect object type from title"""
     try:
-        # Load image with proper headers
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(image_url, timeout=10, headers=headers)
-        response.raise_for_status()
-        
-        # Try to open image
-        image = Image.open(BytesIO(response.content))
-        image = image.convert('RGB')  # Ensure RGB format
-        
-        # Preprocess image
-        image_input = preprocess(image).unsqueeze(0).to(device)
-        
-        # Extract image features
-        with torch.no_grad():
-            image_features = model.encode_image(image_input)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-        
-        # Use comprehensive object descriptions for detection
-        object_descriptions = [
-            "a scooter", "an electric scooter", "a kick scooter", "a razor scooter",
-            "a bicycle", "a mountain bike", "a road bike", "an electric bike",
-            "a motorcycle", "a moped", "a skateboard", "a hoverboard",
-            "a car", "a truck", "a van", "a bus",
-            "a chair", "a table", "a sofa", "a bed", "a couch",
-            "a laptop", "a computer", "a phone", "a tablet",
-            "a book", "a magazine", "a newspaper", "a document",
-            "a toy", "a game", "a puzzle", "a doll",
-            "a tool", "a hammer", "a screwdriver", "a wrench",
-            "a kitchen appliance", "a refrigerator", "a microwave", "a toaster",
-            "clothing", "a shirt", "a dress", "a jacket", "shoes", "sneakers",
-            "a bag", "a backpack", "a purse", "a suitcase",
-            "a camera", "a television", "a radio", "a speaker",
-            "a plant", "a flower", "a tree", "a garden",
-            "food", "a fruit", "a vegetable", "a meal",
-            "a pet", "a dog", "a cat", "a bird",
-            "a person", "a child", "a baby", "an adult"
-        ]
-        
-        # Process with CLIP using text descriptions
-        text = clip.tokenize(object_descriptions).to(device)
+        # Try Ollama API first
+        response = requests.post('http://localhost:11434/api/generate', 
+                               json={
+                                   'model': 'llama2',  # Change to your model name
+                                   'prompt': f"""Given this marketplace listing title, identify the main object type in one word.
 
-with torch.no_grad():
-    text_features = model.encode_text(text)
-            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+Title: "{title}"
+
+Respond with only the main object type (e.g., bicycle, sofa, laptop, phone, car). No explanations, just the word.""",
+                                   'stream': False
+                               },
+                               timeout=10)
+        
+        if response.status_code == 200:
+            result = response.json()
+            object_type = result['response'].strip().lower()
             
-            # Compute similarity
-            similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-            probs = similarity.cpu().numpy()
+            # Clean up the response
+            object_type = object_type.replace('.', '').replace(',', '').strip()
+            
+            return {
+                'detected_object': f"a {object_type}",
+                'object_confidence': 0.9,  # High confidence for LLM
+                'detection_method': 'llama_ai',
+                'raw_response': result['response']
+            }
+        else:
+            raise Exception(f"Ollama API error: {response.status_code}")
+            
+    except Exception as e:
+        print(f"❌ Error with Llama detection: {e}")
+        print("🔄 Falling back to simple keyword matching...")
+        # Fallback to simple keyword matching
+        return detect_object_from_title_simple(title)
+
+def detect_object_from_title_simple(title):
+    """Simple fallback object detection using keyword matching"""
+    try:
+        title_lower = title.lower()
         
-        # Get results
-        results = list(zip(object_descriptions, probs[0]))
-        results.sort(key=lambda x: x[1], reverse=True)
+        # Simple keyword mapping
+        keyword_mapping = {
+            'bicycle': ['bike', 'bicycle', 'road bike', 'mountain bike', 'bmx', 'cruiser', 'hybrid', 'trek', 'specialized', 'giant', 'cannondale'],
+            'sofa': ['sofa', 'couch', 'sectional', 'loveseat', 'futon'],
+            'chair': ['chair', 'dining chair', 'office chair', 'recliner', 'armchair'],
+            'table': ['table', 'dining table', 'coffee table', 'end table', 'desk'],
+            'bed': ['bed', 'mattress', 'bedframe', 'headboard'],
+            'laptop': ['laptop', 'macbook', 'dell', 'hp', 'lenovo', 'asus'],
+            'phone': ['phone', 'iphone', 'samsung', 'android', 'smartphone', 'galaxy'],
+            'tablet': ['tablet', 'ipad', 'kindle', 'surface'],
+            'tv': ['tv', 'television', 'monitor', 'screen', 'display'],
+            'shoes': ['shoes', 'sneakers', 'boots', 'sandals', 'nike', 'adidas', 'jordan'],
+            'car': ['car', 'vehicle', 'sedan', 'suv', 'truck', 'van', 'bmw', 'mercedes', 'audi', 'honda', 'toyota'],
+            'tool': ['tool', 'hammer', 'screwdriver', 'wrench', 'drill', 'saw'],
+            'appliance': ['refrigerator', 'microwave', 'oven', 'dishwasher', 'washer', 'dryer'],
+        }
         
-        # Return both object detection and image features
+        # Check for matches
+        for category, keywords in keyword_mapping.items():
+            if any(keyword in title_lower for keyword in keywords):
+                return {
+                    'detected_object': f"a {category}",
+                    'object_confidence': 0.7,  # Medium confidence for keyword matching
+                    'detection_method': 'keyword_fallback',
+                    'matched_keywords': [kw for kw in keywords if kw in title_lower]
+                }
+        
+        # Ultimate fallback
         return {
-            'detected_object': results[0][0],  # Best object match
-            'object_confidence': results[0][1],  # Confidence for best match
-            'top_3_objects': results[:3],  # Top 3 object matches
-            'image_features': image_features.cpu().numpy(),
-            'feature_norm': torch.norm(image_features[0]).item(),
-            'raw_features': image_features[0].cpu().numpy().tolist()
+            'detected_object': "an item",
+            'object_confidence': 0.1,
+            'detection_method': 'unknown',
+            'original_title': title
         }
         
     except Exception as e:
-        print(f"❌ Error detecting object type: {e}")
+        print(f"❌ Error in fallback detection: {e}")
         return {
             'detected_object': "unknown",
             'object_confidence': 0.0,
-            'top_3_objects': [("unknown", 0.0)],
-            'image_features': None,
-            'feature_norm': 0.0,
-            'raw_features': []
+            'detection_method': 'error'
         }
 
 def assess_condition(image_url, detected_object):
@@ -129,9 +136,9 @@ def assess_condition(image_url, detected_object):
         # Process with CLIP
         text = clip.tokenize(all_conditions).to(device)
 
-        with torch.no_grad():
+with torch.no_grad():
             logits_per_image, logits_per_text = model(image_input, text)
-    probs = logits_per_image.softmax(dim=-1).cpu().numpy()
+            probs = logits_per_image.softmax(dim=-1).cpu().numpy()
 
         # Get results
         results = list(zip(all_conditions, probs[0]))
@@ -171,14 +178,18 @@ def process_csv_file(csv_path, max_items=None):
             print(f"Price: {row['price']}")
             print(f"Location: {row['location_city']}, {row['location_state']}")
             
-            # Step 1: Detect object type using comprehensive descriptions
-            print("🔍 Detecting object type...")
-            object_results = detect_object_type(row['photo_url'])
+            # Step 1: Detect object type from title using Llama AI
+            print("🔍 Detecting object type from title using AI...")
+            object_results = detect_object_with_llama(row['title'])
             detected_object = object_results['detected_object']
             object_confidence = object_results['object_confidence']
-            top_3_objects = object_results['top_3_objects']
+            detection_method = object_results['detection_method']
             print(f"   Detected: {detected_object} (confidence: {object_confidence:.3f})")
-            print(f"   Top 3: {[f'{obj[0]} ({obj[1]:.3f})' for obj in top_3_objects]}")
+            print(f"   Method: {detection_method}")
+            if 'matched_brand' in object_results:
+                print(f"   Brand: {object_results['matched_brand']}")
+            if 'matched_keywords' in object_results:
+                print(f"   Keywords: {object_results['matched_keywords']}")
             
             # Step 2: Assess condition using the detected object name
             print("🔍 Assessing condition...")
@@ -194,13 +205,12 @@ def process_csv_file(csv_path, max_items=None):
                 'title': row['title'],
                 'price': row['price'],
                 'location': f"{row['location_city']}, {row['location_state']}",
-                # Object detection results
+                # Object detection results (from title)
                 'detected_object': detected_object,
                 'object_confidence': object_confidence,
-                'detected_object_2nd': top_3_objects[1][0] if len(top_3_objects) > 1 else "N/A",
-                'object_confidence_2nd': top_3_objects[1][1] if len(top_3_objects) > 1 else 0.0,
-                'detected_object_3rd': top_3_objects[2][0] if len(top_3_objects) > 2 else "N/A",
-                'object_confidence_3rd': top_3_objects[2][1] if len(top_3_objects) > 2 else 0.0,
+                'detection_method': detection_method,
+                'raw_response': object_results.get('raw_response', 'N/A'),
+                'matched_keywords': ', '.join(object_results.get('matched_keywords', [])),
                 # Condition assessment results
                 'condition': top_condition[0],
                 'condition_confidence': top_condition[1],
@@ -358,8 +368,11 @@ def main():
         print(f"\n📊 ADDITIONAL DETAILS:")
         for i, result in enumerate(results, 1):
             print(f"\n{i}. {result['title']}")
-            print(f"   Object 2nd: {result['detected_object_2nd']} ({result['object_confidence_2nd']:.3f})")
-            print(f"   Object 3rd: {result['detected_object_3rd']} ({result['object_confidence_3rd']:.3f})")
+            print(f"   Detection Method: {result['detection_method']}")
+            if result['raw_response'] != 'N/A':
+                print(f"   AI Response: {result['raw_response']}")
+            if result['matched_keywords']:
+                print(f"   Matched Keywords: {result['matched_keywords']}")
             print(f"   Condition 2nd: {result['condition_2nd']} ({result['condition_confidence_2nd']:.3f})")
             print(f"   Condition 3rd: {result['condition_3rd']} ({result['condition_confidence_3rd']:.3f})")
             print(f"   Price: {result['price']}")
