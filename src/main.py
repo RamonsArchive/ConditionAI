@@ -5,44 +5,40 @@ import requests
 from PIL import Image
 from io import BytesIO
 import time
+from gpt4all import GPT4All
 
 # Load CLIP model once at startup
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"🚀 Loading CLIP model on {device.upper()}...")
 model, preprocess = clip.load("ViT-L/14", device=device)
-print("✅ Model loaded successfully!")
+print("✅ CLIP model loaded successfully!")
+
+# Load Llama model for object detection
+print(f"🤖 Loading Llama 3 8B model...")
+llama_model = GPT4All("Meta-Llama-3-8B-Instruct.Q4_0.gguf")
+print("✅ Llama model loaded successfully!")
 
 def detect_object_with_llama(title):
-    """Use local Llama model to detect object type from title"""
+    """Use local Llama 3 8B model to detect object type from title"""
     try:
-        # Try Ollama API first
-        response = requests.post('http://localhost:11434/api/generate', 
-                               json={
-                                   'model': 'llama2',  # Change to your model name
-                                   'prompt': f"""Given this marketplace listing title, identify the main object type in one word.
-
-Title: "{title}"
-
-Respond with only the main object type (e.g., bicycle, sofa, laptop, phone, car). No explanations, just the word.""",
-                                   'stream': False
-                               },
-                               timeout=10)
-        
-        if response.status_code == 200:
-            result = response.json()
-            object_type = result['response'].strip().lower()
+        # Use GPT4All with Llama model
+        with llama_model.chat_session():
+            prompt = f"Give generic type of this item in it's most basic form of a real object as one word or tag: {title}"
+            response = llama_model.generate(prompt, max_tokens=10)
             
             # Clean up the response
-            object_type = object_type.replace('.', '').replace(',', '').strip()
+            object_type = response.strip().lower()
+            object_type = object_type.replace('.', '').replace(',', '').replace('\n', '').strip()
+            
+            # Extract just the first word if multiple words returned
+            object_type = object_type.split()[0] if object_type.split() else "item"
             
             return {
                 'detected_object': f"a {object_type}",
-                'object_confidence': 0.9,  # High confidence for LLM
-                'detection_method': 'llama_ai',
-                'raw_response': result['response']
+                'object_confidence': 0.0,  # Llama doesn't provide confidence scores (unlike CLIP)
+                'detection_method': 'llama3_8b',
+                'raw_response': response
             }
-        else:
-            raise Exception(f"Ollama API error: {response.status_code}")
             
     except Exception as e:
         print(f"❌ Error with Llama detection: {e}")
@@ -135,8 +131,8 @@ def assess_condition(image_url, detected_object):
         
         # Process with CLIP
         text = clip.tokenize(all_conditions).to(device)
-
-with torch.no_grad():
+        
+        with torch.no_grad():
             logits_per_image, logits_per_text = model(image_input, text)
             probs = logits_per_image.softmax(dim=-1).cpu().numpy()
 
@@ -178,8 +174,8 @@ def process_csv_file(csv_path, max_items=None):
             print(f"Price: {row['price']}")
             print(f"Location: {row['location_city']}, {row['location_state']}")
             
-            # Step 1: Detect object type from title using Llama AI
-            print("🔍 Detecting object type from title using AI...")
+            # Step 1: Detect object type from title using Llama 3 8B AI
+            print("🔍 Detecting object type from title using Llama 3 8B...")
             object_results = detect_object_with_llama(row['title'])
             detected_object = object_results['detected_object']
             object_confidence = object_results['object_confidence']
@@ -266,17 +262,7 @@ def create_test_csv():
     # Random images from various sources (public domain/creative commons)
     test_data = [
         {
-            "title": "Vintage Bicycle",
-            "price": "$150",
-            "location_city": "Portland",
-            "location_state": "OR",
-            "id": "test_001",
-            "url": "https://example.com/test_001",
-            "photo_url": "https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=400",
-            "miles": "N/A"
-        },
-        {
-            "title": "Couch",
+            "title": "Couch for sale for free",
             "price": "$150",
             "location_city": "Portland",
             "location_state": "OR",
@@ -285,7 +271,7 @@ def create_test_csv():
             "photo_url": "https://scontent-lax3-1.xx.fbcdn.net/v/t45.5328-4/540346486_798106729320942_231890133157320701_n.jpg?stp=c0.151.261.261a_dst-jpg_p261x260_tt6&_nc_cat=102&ccb=1-7&_nc_sid=247b10&_nc_ohc=1LSHKss4cFsQ7kNvwEJgCDB&_nc_oc=AdnABV6EGKsCki2uMvG_7aGhQM0Zx7FSgthgdSEIbAC6vYfsaxcRUO36L6gPkNMr1zN5oxCUDqbgFPmXfkXiDewM&_nc_zt=23&_nc_ht=scontent-lax3-1.xx&_nc_gid=vIN0efnMmHa-yJGN__XVJQ&oh=00_AfV_pME-0BoCBQkDRx5qe8S3deUj34hUZVFQf2OaBk43AQ&oe=68BC6B80",
             "miles": "N/A"
         }, {
-            "title": "poor couch",
+            "title": "Used couch for sale asap",
             "price": "$150",  
             "location_city": "New England",
             "location_state": "OR",
@@ -294,7 +280,7 @@ def create_test_csv():
             "photo_url": "https://scontent-lax3-1.xx.fbcdn.net/v/t45.5328-4/541549792_4215891432070535_4657146202498903696_n.jpg?stp=c151.0.260.260a_dst-jpg_p261x260_tt6&_nc_cat=104&ccb=1-7&_nc_sid=247b10&_nc_ohc=CNnkRGfYVtsQ7kNvwGmv3D6&_nc_oc=AdluJPkBCMO7JlKz6CDt-bQmrKeYdp1QKiMm1V9diBfQ9luKyk0PuloHKzC_IjMdVrB6sesrhDWtzbGHc0ozKOXJ&_nc_zt=23&_nc_ht=scontent-lax3-1.xx&_nc_gid=_NKLz-rEFJBrmAXyF-1zLA&oh=00_AfX9U3zSahpbQcqo_voodUEV-k_ELGXMhA3sNMjoaSGSUA&oe=68BC7BBD",
             "miles": "N/A"
         }, {
-            "title": "third supreme",
+            "title": "free sofa pickup only",
             "price": "$150",  
             "location_city": "New England",
             "location_state": "OR",
@@ -304,7 +290,7 @@ def create_test_csv():
             "miles": "N/A"
         },
         {
-            "title": "fourth image",
+            "title": "lighlty used couch for heavy discount",
             "price": "$150",  
             "location_city": "New England",
             "location_state": "OR",
@@ -314,7 +300,7 @@ def create_test_csv():
             "miles": "N/A"
         },
         {
-            "title": "fifth nike",
+            "title": "free couch",
             "price": "$150",  
             "location_city": "New England",
             "location_state": "OR",
@@ -324,7 +310,7 @@ def create_test_csv():
             "miles": "N/A"
         },
         {
-            "title": "sixth addidas",
+            "title": "used funiture need gone asap",
             "price": "$150",  
             "location_city": "New England",
             "location_state": "OR",
@@ -353,7 +339,7 @@ def main():
     csv_file = create_test_csv()
     
     # Process the test CSV
-    results = process_csv_file(csv_file, max_items=None)  # Process all items
+    results = process_csv_file("test_items.csv", max_items=None)  # Process all items from test_items.csv
     
     if results:
         save_results(results, "final_results.csv")
@@ -366,13 +352,14 @@ def main():
             print(f"{result['title']:<20} {result['detected_object']:<20} {result['object_confidence']:<12.3f} {result['condition']:<30} {result['condition_confidence']:<12.3f}")
         
         print(f"\n📊 ADDITIONAL DETAILS:")
-        for i, result in enumerate(results, 1):
+        for i, result in enumerate(results, 0):
             print(f"\n{i}. {result['title']}")
             print(f"   Detection Method: {result['detection_method']}")
             if result['raw_response'] != 'N/A':
                 print(f"   AI Response: {result['raw_response']}")
             if result['matched_keywords']:
                 print(f"   Matched Keywords: {result['matched_keywords']}")
+            print(f"   Condition 1st: {result['condition']} ({result['condition_confidence']:.3f})")
             print(f"   Condition 2nd: {result['condition_2nd']} ({result['condition_confidence_2nd']:.3f})")
             print(f"   Condition 3rd: {result['condition_3rd']} ({result['condition_confidence_3rd']:.3f})")
             print(f"   Price: {result['price']}")
