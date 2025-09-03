@@ -1,0 +1,5 @@
+{
+  "black-formatter.path": [
+    "[\"~/global_env/black\"]"
+  ]
+}

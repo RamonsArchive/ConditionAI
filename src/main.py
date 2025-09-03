@@ -1,11 +1,12 @@
-import torch
-import clip
-import pandas as pd
-import requests
-from PIL import Image
 from io import BytesIO
 import time
+
+from PIL import Image
+import clip
 from gpt4all import GPT4All
+import pandas as pd
+import requests
+import torch
 
 # Load CLIP model once at startup
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -23,22 +24,30 @@ def detect_object_with_llama(title):
     try:
         # Use GPT4All with Llama model
         with llama_model.chat_session():
-            prompt = f"Give generic type of this item in it's most basic form of a real object as one word or tag: {title}"
+            prompt = f"""You are a tagger. From the given listing title, output EXACTLY ONE generic, neutral, singular NOUN that best describes the item. 
+Rules:
+- Output must be ONE WORD only, lowercase letters only (^[a-z]+$). 
+- No sentences, no quotes, no adjectives, no sentiment (no "trash/garbage/junk"), no verbs, no punctuation, no filler.
+- Ignore condition, urgency, price, free/giveaway phrasing, and calls to action (e.g., "used", "need gone", "free", "asap", "pick up").
+- If the title is ambiguous, output item.
+- Prefer the umbrella hypernym if multiple items are referenced (e.g., chairs and table → furniture).
+- Canonicalize common synonyms (cellphone → phone, tv → television, laptop → laptop).
+Respond with the single word only to describe: {title}"""
             response = llama_model.generate(prompt, max_tokens=10)
-            
-            # Clean up the response
-            object_type = response.strip().lower()
-            object_type = object_type.replace('.', '').replace(',', '').replace('\n', '').strip()
-            
-            # Extract just the first word if multiple words returned
-            object_type = object_type.split()[0] if object_type.split() else "item"
-            
-            return {
-                'detected_object': f"a {object_type}",
-                'object_confidence': 0.0,  # Llama doesn't provide confidence scores (unlike CLIP)
-                'detection_method': 'llama3_8b',
-                'raw_response': response
-            }
+        
+        # Clean up the response
+        object_type = response.strip().lower()
+        object_type = object_type.replace('.', '').replace(',', '').replace('\n', '').strip()
+        
+        # Extract just the first word if multiple words returned
+        object_type = object_type.split()[0] if object_type.split() else "item"
+        
+        return {
+            'detected_object': f"a {object_type}",
+            'object_confidence': 0.0,  # Llama doesn't provide confidence scores (unlike CLIP)
+            'detection_method': 'llama3_8b',
+            'raw_response': response
+        }
             
     except Exception as e:
         print(f"❌ Error with Llama detection: {e}")
@@ -112,17 +121,22 @@ def assess_condition(image_url, detected_object):
         image_input = preprocess(image).unsqueeze(0).to(device)
         
         
-        # Add object-specific conditions
+        # # Add object-specific conditions
+        # object_specific = [
+        #     f"{detected_object} in like new condition",
+        #     f"{detected_object} in excellent condition", 
+        #     f"{detected_object} in good condition",
+        #     f"{detected_object} in fair condition",
+        #     f"{detected_object} in poor condition",
+        #     f"{detected_object} needs repair",
+        #     f"well maintained {detected_object}",
+        #     f"damaged {detected_object}",
+        #     f"broken {detected_object}"
+        # ]
         object_specific = [
-            f"{detected_object} in like new condition",
-            f"{detected_object} in excellent condition", 
             f"{detected_object} in good condition",
             f"{detected_object} in fair condition",
-            f"{detected_object} in poor condition",
-            f"{detected_object} needs repair",
-            f"well maintained {detected_object}",
-            f"damaged {detected_object}",
-            f"broken {detected_object}"
+            f"{detected_object} in poor condition"
         ]
         print(object_specific)
         
@@ -131,7 +145,7 @@ def assess_condition(image_url, detected_object):
         
         # Process with CLIP
         text = clip.tokenize(all_conditions).to(device)
-        
+
         with torch.no_grad():
             logits_per_image, logits_per_text = model(image_input, text)
             probs = logits_per_image.softmax(dim=-1).cpu().numpy()
@@ -290,35 +304,16 @@ def create_test_csv():
             "miles": "N/A"
         },
         {
-            "title": "lighlty used couch for heavy discount",
-            "price": "$150",  
-            "location_city": "New England",
-            "location_state": "OR",
-            "id": "test_003",
-            "url": "https://example.com/test_003",
-            "photo_url": "https://scontent-lax3-2.xx.fbcdn.net/v/t45.5328-4/528623575_761914299717478_5763832977874385031_n.jpg?stp=c0.0.261.261a_dst-jpg_p261x260_tt6&_nc_cat=111&ccb=1-7&_nc_sid=247b10&_nc_ohc=qEHSlyzUiKEQ7kNvwG_tcwf&_nc_oc=Adkh4jFFGSgzP9JLXXKH41I6s_0rMt2cM5fT6AorHC60TaX83-Y-_7vtcV4EyAYqNoN18IwSCVdsTUzvP9alK76e&_nc_zt=23&_nc_ht=scontent-lax3-2.xx&_nc_gid=_NKLz-rEFJBrmAXyF-1zLA&oh=00_AfX2vMD0xbUSBNr-RdaY8MRsJUeaV9xlfzVEMV5Jphw_1A&oe=68BC71C5",
-            "miles": "N/A"
-        },
-        {
-            "title": "free couch",
-            "price": "$150",  
-            "location_city": "New England",
-            "location_state": "OR",
-            "id": "test_003",
-            "url": "https://example.com/test_003",
-            "photo_url": "https://scontent-lax3-1.xx.fbcdn.net/v/t45.5328-4/540310722_779810248549698_6426088553411326993_n.jpg?stp=c151.0.260.260a_dst-jpg_p261x260_tt6&_nc_cat=110&ccb=1-7&_nc_sid=247b10&_nc_ohc=qiMl568DRzoQ7kNvwGSekjU&_nc_oc=AdnRr75M8arVCwmWBQISNp79JftPKF53-gKDWsxhETu92QycMhVfKGoG_FMHSXb61-myB-yhbz0ZDZgRVqOGivAo&_nc_zt=23&_nc_ht=scontent-lax3-1.xx&_nc_gid=0-EKM_6iyNuv7Jalq4liqQ&oh=00_AfWWxKnNIyX62Dp7WpboQxJE2PrxX159NI3IqbwM-ipAGw&oe=68BC7E76",
-            "miles": "N/A"
-        },
-        {
             "title": "used funiture need gone asap",
             "price": "$150",  
             "location_city": "New England",
             "location_state": "OR",
             "id": "test_003",
             "url": "https://example.com/test_003",
-            "photo_url": "https://scontent-lax3-1.xx.fbcdn.net/v/t45.5328-4/532940724_1297016961801725_1815344610964279089_n.jpg?stp=c0.43.261.261a_dst-jpg_p261x260_tt6&_nc_cat=110&ccb=1-7&_nc_sid=247b10&_nc_ohc=hZHadHqP9zsQ7kNvwFB8YdW&_nc_oc=AdnZGO2PESRFVQX0-nH3N0mIaa9g6GDQ-jnKJ8c3icbkvb8bvisfHoMfyJcz_JsnUBMxVXqbKRmmB3aeqY6W-SAg&_nc_zt=23&_nc_ht=scontent-lax3-1.xx&_nc_gid=0-EKM_6iyNuv7Jalq4liqQ&oh=00_AfX6ldUyexA14KocM_o8llSpljNx6lEDBGZfGbPm4Hztkg&oe=68BC6A7E",
+            "photo_url": "https://www.shutterstock.com/image-photo/old-dirty-ripped-sofa-dump-260nw-707151838.jpg",
             "miles": "N/A"
         }
+     
     ]
     # Create DataFrame and save
     df = pd.DataFrame(test_data)
