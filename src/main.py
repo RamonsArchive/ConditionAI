@@ -269,57 +269,6 @@ def save_results(results, output_file="results.csv"):
     for cond, count in condition_counts.head(5).items():
         print(f"     - {cond}: {count}")
 
-def create_test_csv():
-    """Create a test CSV with random images for testing"""
-    print("📝 Creating test CSV with random images...")
-    
-    # Random images from various sources (public domain/creative commons)
-    test_data = [
-        {
-            "title": "Couch for sale for free",
-            "price": "$150",
-            "location_city": "Portland",
-            "location_state": "OR",
-            "id": "test_002",
-            "url": "https://example.com/test_002",
-            "photo_url": "https://scontent-lax3-1.xx.fbcdn.net/v/t45.5328-4/540346486_798106729320942_231890133157320701_n.jpg?stp=c0.151.261.261a_dst-jpg_p261x260_tt6&_nc_cat=102&ccb=1-7&_nc_sid=247b10&_nc_ohc=1LSHKss4cFsQ7kNvwEJgCDB&_nc_oc=AdnABV6EGKsCki2uMvG_7aGhQM0Zx7FSgthgdSEIbAC6vYfsaxcRUO36L6gPkNMr1zN5oxCUDqbgFPmXfkXiDewM&_nc_zt=23&_nc_ht=scontent-lax3-1.xx&_nc_gid=vIN0efnMmHa-yJGN__XVJQ&oh=00_AfV_pME-0BoCBQkDRx5qe8S3deUj34hUZVFQf2OaBk43AQ&oe=68BC6B80",
-            "miles": "N/A"
-        }, {
-            "title": "Used couch for sale asap",
-            "price": "$150",  
-            "location_city": "New England",
-            "location_state": "OR",
-            "id": "test_003",
-            "url": "https://example.com/test_003",
-            "photo_url": "https://scontent-lax3-1.xx.fbcdn.net/v/t45.5328-4/541549792_4215891432070535_4657146202498903696_n.jpg?stp=c151.0.260.260a_dst-jpg_p261x260_tt6&_nc_cat=104&ccb=1-7&_nc_sid=247b10&_nc_ohc=CNnkRGfYVtsQ7kNvwGmv3D6&_nc_oc=AdluJPkBCMO7JlKz6CDt-bQmrKeYdp1QKiMm1V9diBfQ9luKyk0PuloHKzC_IjMdVrB6sesrhDWtzbGHc0ozKOXJ&_nc_zt=23&_nc_ht=scontent-lax3-1.xx&_nc_gid=_NKLz-rEFJBrmAXyF-1zLA&oh=00_AfX9U3zSahpbQcqo_voodUEV-k_ELGXMhA3sNMjoaSGSUA&oe=68BC7BBD",
-            "miles": "N/A"
-        }, {
-            "title": "free sofa pickup only",
-            "price": "$150",  
-            "location_city": "New England",
-            "location_state": "OR",
-            "id": "test_003",
-            "url": "https://example.com/test_003",
-            "photo_url": "https://scontent-lax3-1.xx.fbcdn.net/v/t45.5328-4/541428204_785240323869229_5798388497150660454_n.jpg?stp=c0.43.261.261a_dst-jpg_p261x260_tt6&_nc_cat=110&ccb=1-7&_nc_sid=247b10&_nc_ohc=yLHGyhw3RA8Q7kNvwFjSTb3&_nc_oc=AdlFeAVBTrIoopT2b400NO7DsY2B_hV4XfzF1RFwHVs7JRCgdE3W34jnk8vbhHJnTvhgxjObjE1sfj9NOLFDQM3U&_nc_zt=23&_nc_ht=scontent-lax3-1.xx&_nc_gid=tVnVp7HKj5NUlURMDWVBmA&oh=00_AfWoL3X8JAhtbSQ9Bz-Me3yXSG3Fr7Fv18EmpKqASZa2lA&oe=68BC79EA",
-            "miles": "N/A"
-        },
-        {
-            "title": "used funiture need gone asap",
-            "price": "$150",  
-            "location_city": "New England",
-            "location_state": "OR",
-            "id": "test_003",
-            "url": "https://example.com/test_003",
-            "photo_url": "https://www.shutterstock.com/image-photo/old-dirty-ripped-sofa-dump-260nw-707151838.jpg",
-            "miles": "N/A"
-        }
-     
-    ]
-    # Create DataFrame and save
-    df = pd.DataFrame(test_data)
-    df.to_csv("test_items.csv", index=False)
-    print("✅ Test CSV created: test_items.csv")
-    return "test_items.csv"
 
 def main():
     """Main function to run the pipeline"""
@@ -330,11 +279,8 @@ def main():
     print("\n" + "=" * 50)
     print("📊 Creating test data and processing...")
     
-    # Create test CSV with random images
-    csv_file = create_test_csv()
-    
     # Process the test CSV
-    results = process_csv_file("test_items2.csv", max_items=None)  # Process all items from test_items.csv
+    results = process_csv_file("test_list.csv", max_items=None)  # Process all items from test_items.csv
     
     if results:
         save_results(results, "final_results.csv")
