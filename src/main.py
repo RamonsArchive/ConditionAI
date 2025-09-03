@@ -334,7 +334,7 @@ def main():
     csv_file = create_test_csv()
     
     # Process the test CSV
-    results = process_csv_file("test_items.csv", max_items=None)  # Process all items from test_items.csv
+    results = process_csv_file("test_items2.csv", max_items=None)  # Process all items from test_items.csv
     
     if results:
         save_results(results, "final_results.csv")
