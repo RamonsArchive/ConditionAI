@@ -1,6 +1,13 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "NIXPACKS",
+    "nixpacksConfig": {
+      "phases": {
+        "install": {
+          "cmds": ["pip install -r requirements.txt"]
+        }
+      }
+    }
   },
   "deploy": {
     "startCommand": "python railway_main.py",

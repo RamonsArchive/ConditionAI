@@ -1,0 +1,2 @@
+# Ignore ML imports to prevent auto-installation
+railway_main.py

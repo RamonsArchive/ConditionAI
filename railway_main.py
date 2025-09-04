@@ -19,33 +19,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables for lazy loading
-model = None
-preprocess = None
-llama_model = None
-device = None
+# Load models at startup, not on first request
+import torch
+import clip
+from gpt4all import GPT4All
 
-async def load_models():
-    """Load ML models on first request"""
-    global model, preprocess, llama_model, device
-    
-    if model is None:
-        try:
-            import torch
-            import clip
-            from gpt4all import GPT4All
-            
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            print(f"Loading CLIP model on {device}...")
-            model, preprocess = clip.load("ViT-L/14", device=device)
-            
-            print("Loading Llama model...")
-            llama_model = GPT4All("Meta-Llama-3-8B-Instruct.Q4_0.gguf")
-            
-            print("Models loaded successfully!")
-        except Exception as e:
-            print(f"Error loading models: {e}")
-            raise HTTPException(status_code=500, detail="Failed to load ML models")
+# Global model loading at startup
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"🚀 Loading CLIP model on {device}...")
+model, preprocess = clip.load("ViT-L/14", device=device)
+print("✅ CLIP model loaded successfully!")
+
+print("🤖 Loading Llama model...")
+llama_model = GPT4All("Meta-Llama-3-8B-Instruct.Q4_0.gguf")
+print("✅ Llama model loaded successfully!")
 
 # Pydantic models for request/response
 class ListingItem(BaseModel):
@@ -192,9 +179,6 @@ async def assess_condition_async(image_url: str, detected_object: str) -> Dict[s
 async def assess_conditions(request: ConditionRequest):
     """Main endpoint to assess conditions for listings"""
     start_time = time.time()
-    
-    # Load models on first request
-    await load_models()
     
     try:
         enhanced_results = []
