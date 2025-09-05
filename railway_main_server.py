@@ -78,7 +78,7 @@ class GoodDealsConditionAPI(LitAPI):
         import clip
         import os
             
-            # Check if we have cached models from build time
+        # Check if we have cached models from build time
         verification_file = '/app/clip_verification.pt'
         build_time_cache = False
             
@@ -90,76 +90,76 @@ class GoodDealsConditionAPI(LitAPI):
             except Exception as e:
                 print(f"⚠️ Could not read verification file: {e}")
             
-            # Try multiple approaches to load CLIP
-            models_to_try = ["ViT-L/14", "ViT-B/32"]  # Primary and fallback
-            
-            for model_name in models_to_try:
-                try:
-                    print(f"📥 Attempting to load CLIP {model_name} on {self.device}...")
+        # Try multiple approaches to load CLIP
+        models_to_try = ["ViT-L/14", "ViT-B/32"]  # Primary and fallback
+        
+        for model_name in models_to_try:
+            try:
+                print(f"📥 Attempting to load CLIP {model_name} on {self.device}...")
+                
+                # Load model with explicit error handling
+                self.model, self.preprocess = clip.load(model_name, device=self.device)
+                
+                # Verify the model loaded correctly
+                if self.model is not None and self.preprocess is not None:
+                    print(f"✅ CLIP {model_name} loaded successfully!")
+                    print(f"📊 Model device: {next(self.model.parameters()).device}")
                     
-                    # Load model with explicit error handling
-                    self.model, self.preprocess = clip.load(model_name, device=self.device)
+                    # Test the model with a simple forward pass
+                    test_text = clip.tokenize(["a test item"]).to(self.device)
+                    with torch.no_grad():
+                        text_features = self.model.encode_text(test_text)
+                        print(f"✅ CLIP model test passed, output shape: {text_features.shape}")
                     
-                    # Verify the model loaded correctly
-                    if self.model is not None and self.preprocess is not None:
-                        print(f"✅ CLIP {model_name} loaded successfully!")
-                        print(f"📊 Model device: {next(self.model.parameters()).device}")
-                        
-                        # Test the model with a simple forward pass
-                        test_text = clip.tokenize(["a test item"]).to(self.device)
-                        with torch.no_grad():
-                            text_features = self.model.encode_text(test_text)
-                            print(f"✅ CLIP model test passed, output shape: {text_features.shape}")
-                        
-                        self.clip_loaded = True
-                        self.clip_model_name = model_name
-                        print(f"🎯 Successfully loaded {model_name}")
-                        break  # Success, no need to try other models
-                    else:
-                        raise Exception("Model or preprocess is None after loading")
-                        
-                except Exception as e:
-                    print(f"❌ CLIP {model_name} loading failed: {e}")
-                    print(f"📋 Error type: {type(e).__name__}")
+                    self.clip_loaded = True
+                    self.clip_model_name = model_name
+                    print(f"🎯 Successfully loaded {model_name}")
+                    break  # Success, no need to try other models
+                else:
+                    raise Exception("Model or preprocess is None after loading")
                     
-                    # Continue to next model
-                    continue
-            
-            # Final check if no models loaded
-            if not self.clip_loaded:
-                print("❌ All CLIP model loading attempts failed!")
-                try:
-                    print("🔍 Available CLIP models:", clip.available_models())
-                except:
-                    print("🔍 Could not list available CLIP models")
-                self.model = None
-                self.preprocess = None
-                self.clip_model_name = None
-            
-            # Test Ollama connection and wait for it to be ready
-            print("🔍 Checking Ollama connection...")
-            self.ollama_available = self._wait_for_ollama()
-            if self.ollama_available:
-                print("🤖 Ollama is ready!")
-            else:
-                print("⚠️  Ollama not available, using enhanced fallback")
-            
-            # Setup semaphore for concurrent processing
-            self.semaphore = asyncio.Semaphore(5)  # Max 5 concurrent processes
-            
-            # Print final setup summary
-            print("\n📋 Setup Summary:")
-            print(f"   🎯 Device: {self.device}")
-            print(f"   🖼️  CLIP Model: {'✅ ' + self.clip_model_name if self.clip_loaded else '❌ Failed'}")
-            print(f"   🤖 Ollama: {'✅ Available' if self.ollama_available else '❌ Unavailable'}")
-            print(f"   💾 Build Cache: {'✅ Found' if build_time_cache else '❌ Not found'}")
-            
-            if not self.clip_loaded:
-                print("⚠️  WARNING: CLIP model not available - condition assessment will be limited")
-            
-            # Signal that setup is complete
-            self._setup_complete = True
-            print("🎯 Setup process completed!")
+            except Exception as e:
+                print(f"❌ CLIP {model_name} loading failed: {e}")
+                print(f"📋 Error type: {type(e).__name__}")
+                
+                # Continue to next model
+                continue
+        
+        # Final check if no models loaded
+        if not self.clip_loaded:
+            print("❌ All CLIP model loading attempts failed!")
+            try:
+                print("🔍 Available CLIP models:", clip.available_models())
+            except:
+                print("🔍 Could not list available CLIP models")
+            self.model = None
+            self.preprocess = None
+            self.clip_model_name = None
+        
+        # Test Ollama connection and wait for it to be ready
+        print("🔍 Checking Ollama connection...")
+        self.ollama_available = self._wait_for_ollama()
+        if self.ollama_available:
+            print("🤖 Ollama is ready!")
+        else:
+            print("⚠️  Ollama not available, using enhanced fallback")
+        
+        # Setup semaphore for concurrent processing
+        self.semaphore = asyncio.Semaphore(5)  # Max 5 concurrent processes
+        
+        # Print final setup summary
+        print("\n📋 Setup Summary:")
+        print(f"   🎯 Device: {self.device}")
+        print(f"   🖼️  CLIP Model: {str(self.clip_model_name) if self.clip_loaded else '❌ Failed'}")
+        print(f"   🤖 Ollama: {'✅ Available' if self.ollama_available else '❌ Unavailable'}")
+        print(f"   💾 Build Cache: {'✅ Found' if build_time_cache else '❌ Not found'}")
+        
+        if not self.clip_loaded:
+            print("⚠️  WARNING: CLIP model not available - condition assessment will be limited")
+        
+        # Signal that setup is complete
+        self._setup_complete = True
+        print("🎯 Setup process completed!")
     
     def _wait_for_setup(self, timeout=60):
         """Wait for setup to complete before processing requests"""
@@ -171,6 +171,58 @@ class GoodDealsConditionAPI(LitAPI):
             time.sleep(0.1)  # Check every 100ms
         print("❌ Setup did not complete within timeout!")
         return False
+    
+    def _wait_for_ollama(self, max_attempts=30, wait_time=2) -> bool:
+        """Wait for Ollama to be ready with retries"""
+        import time
+        for attempt in range(max_attempts):
+            try:
+                response = requests.get("http://localhost:11434/api/tags", timeout=5)
+                if response.status_code == 200:
+                    # Check if our model exists
+                    models = response.json().get("models", [])
+                    model_names = [m.get("name", "") for m in models]
+                    if any("llama3.2:1b" in name for name in model_names):
+                        return True
+                    else:
+                        print(f"🔄 Attempt {attempt + 1}/{max_attempts}: Model not ready yet...")
+                        time.sleep(wait_time)
+                else:
+                    print(f"🔄 Attempt {attempt + 1}/{max_attempts}: Ollama not responding...")
+                    time.sleep(wait_time)
+            except Exception as e:
+                print(f"🔄 Attempt {attempt + 1}/{max_attempts}: Connection error: {e}")
+                time.sleep(wait_time)
+        return False
+    
+    def decode_request(self, request) -> ConditionRequest:
+        """Decode incoming request"""
+        print(f"📥 Raw request type: {type(request)}")
+        print(f"📥 Raw request content: {request}")
+        
+        try:
+            # Handle different request formats
+            if isinstance(request, dict):
+                # If request is already a dict, use it directly
+                return ConditionRequest(**request)
+            elif isinstance(request, list):
+                # If request is a list, wrap it in the expected format with default search_query
+                return ConditionRequest(search_query="", results=request)
+            else:
+                # Try to parse as JSON if it's a string
+                import json
+                if isinstance(request, str):
+                    parsed = json.loads(request)
+                    return ConditionRequest(**parsed)
+                else:
+                    # Fallback: assume it's the request object we want
+                    return ConditionRequest(**request)
+                    
+        except Exception as e:
+            print(f"❌ Request decoding error: {e}")
+            print(f"Request content: {request}")
+            # Create a fallback empty request
+            return ConditionRequest(search_query="", results=[])
     
     def predict(self, request: ConditionRequest) -> ConditionResponse:
         """Main prediction logic with setup synchronization"""
@@ -255,58 +307,6 @@ class GoodDealsConditionAPI(LitAPI):
                 total_processed=0
             )
     
-    def _wait_for_ollama(self, max_attempts=30, wait_time=2) -> bool:
-        """Wait for Ollama to be ready with retries"""
-        import time
-        for attempt in range(max_attempts):
-            try:
-                response = requests.get("http://localhost:11434/api/tags", timeout=5)
-                if response.status_code == 200:
-                    # Check if our model exists
-                    models = response.json().get("models", [])
-                    model_names = [m.get("name", "") for m in models]
-                    if any("llama3.2:1b" in name for name in model_names):
-                        return True
-                    else:
-                        print(f"🔄 Attempt {attempt + 1}/{max_attempts}: Model not ready yet...")
-                        time.sleep(wait_time)
-                else:
-                    print(f"🔄 Attempt {attempt + 1}/{max_attempts}: Ollama not responding...")
-                    time.sleep(wait_time)
-            except Exception as e:
-                print(f"🔄 Attempt {attempt + 1}/{max_attempts}: Connection error: {e}")
-                time.sleep(wait_time)
-        return False
-    
-    def decode_request(self, request) -> ConditionRequest:
-        """Decode incoming request"""
-        print(f"📥 Raw request type: {type(request)}")
-        print(f"📥 Raw request content: {request}")
-        
-        try:
-            # Handle different request formats
-            if isinstance(request, dict):
-                # If request is already a dict, use it directly
-                return ConditionRequest(**request)
-            elif isinstance(request, list):
-                # If request is a list, wrap it in the expected format
-                return ConditionRequest(results=request)
-            else:
-                # Try to parse as JSON if it's a string
-                import json
-                if isinstance(request, str):
-                    parsed = json.loads(request)
-                    return ConditionRequest(**parsed)
-                else:
-                    # Fallback: assume it's the request object we want
-                    return ConditionRequest(**request)
-                    
-        except Exception as e:
-            print(f"❌ Request decoding error: {e}")
-            print(f"Request content: {request}")
-            # Create a fallback empty request
-            return ConditionRequest(results=[])
-    
     def encode_response(self, output: ConditionResponse) -> Dict[str, Any]:
         """Encode response for return"""
         return output.model_dump()
@@ -333,8 +333,8 @@ class GoodDealsConditionAPI(LitAPI):
         
         return enhanced_item
     
-    def _detect_object_with_ollama_sync(self, title: str) -> Dict[str, Any]:
-        """Synchronous object detection using Ollama"""
+    def _detect_object_with_ollama_sync(self, search_query: str) -> Dict[str, Any]:
+        """Synchronous object detection using Ollama with search_query"""
         try:
             prompt = f"""What is the main object being searched for? Output only one simple noun.
 
@@ -342,7 +342,7 @@ Example: "mountain bike in san diego" → bike
 Example: "vintage bicycle for sale" → bicycle  
 Example: "used car near me" → car
 
-Output one word only: {title}"""
+Output one word only: {search_query}"""
             
             payload = {
                 "model": "llama3.2:1b",
@@ -373,26 +373,25 @@ Output one word only: {title}"""
                         'detected_object': f"a {object_type}",
                     }
                 else:
-                    return self._detect_object_fallback(title)
+                    return self._detect_object_fallback(search_query)
             else:
-                return self._detect_object_fallback(title)
+                return self._detect_object_fallback(search_query)
                 
         except Exception as e:
             print(f"Ollama error: {e}")
-            return self._detect_object_fallback(title)
+            return self._detect_object_fallback(search_query)
     
     def _assess_condition_sync(self, image_url: str, detected_object: str) -> Dict[str, Any]:
         """Synchronous condition assessment with better error handling"""
         try:
             # Enhanced CLIP availability check with setup synchronization
             if not self._setup_complete:
-                    print("⚠️ Setup not complete, skipping condition assessment")
-                    return {
-                        'condition': "unknown",
-                        'condition_confidence': 0.0
-                    }
+                print("⚠️ Setup not complete, skipping condition assessment")
+                return {
+                    'condition': "unknown",
+                    'condition_confidence': 0.0
+                }
                     
-            
             if not self.clip_loaded or not self.model or not self.preprocess:
                 print(f"⚠️ CLIP model not available for condition assessment")
                 print(f"   clip_loaded: {getattr(self, 'clip_loaded', 'undefined')}")
@@ -430,6 +429,9 @@ Output one word only: {title}"""
                 raise Exception("Preprocess function is not callable")
                 
             preprocessed_tensor = self.preprocess(image)
+            # Ensure we have a tensor before calling unsqueeze
+            if not isinstance(preprocessed_tensor, torch.Tensor):
+                preprocessed_tensor = torch.tensor(preprocessed_tensor)
             image_input = preprocessed_tensor.unsqueeze(0).to(self.device)
             
             conditions = [
@@ -471,9 +473,9 @@ Output one word only: {title}"""
                 'condition_confidence': 0.0
             }
     
-    def _detect_object_fallback(self, title: str) -> Dict[str, Any]:
-        """Enhanced fallback detection with more keywords"""
-        title_lower = title.lower()
+    def _detect_object_fallback(self, search_query: str) -> Dict[str, Any]:
+        """Enhanced fallback detection with more keywords using search_query"""
+        query_lower = search_query.lower()
         
         keyword_mapping = {
             'bicycle': ['bike', 'bicycle', 'cycling', 'trek', 'specialized', 'cannondale', 'giant', 'road bike', 'mountain bike'],
@@ -496,22 +498,18 @@ Output one word only: {title}"""
         
         # Check for exact matches first
         for category, keywords in keyword_mapping.items():
-            if any(keyword in title_lower for keyword in keywords):
-                # Calculate confidence based on keyword match strength
-                matched_keywords = [kw for kw in keywords if kw in title_lower]
-                confidence = min(0.9, 0.6 + (len(matched_keywords) * 0.1))
+            if any(keyword in query_lower for keyword in keywords):
                 return {
                     'detected_object': f"a {category}",
                 }
         
         # If no match, try to extract likely nouns
         import re
-        words = re.findall(r'\b[a-zA-Z]+\b', title_lower)
+        words = re.findall(r'\b[a-zA-Z]+\b', query_lower)
         skip_words = ['free', 'sale', 'good', 'great', 'nice', 'condition', 'used', 'new', 'excellent', 'fair', 'poor']
         
         for word in words:
             if len(word) > 3 and word not in skip_words and word.isalpha():
-                # Calculate confidence based on word length and commonality
                 return {
                     'detected_object': f"a {word}",
                 }
@@ -570,7 +568,6 @@ if __name__ == "__main__":
                 return {"error": "Setup not complete", "results": [], "processing_time": 0.0, "total_processed": 0}
             
             # Call the API's predict method directly
-            #condition_request = api.decode_request(request_data)
             result = api.predict(request_data)
             return api.encode_response(result)
             
