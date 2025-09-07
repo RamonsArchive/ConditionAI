@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Test the assess-conditions endpoint with proper JSON formatting
-curl -X POST http://localhost:8000/assess-conditions \
+# Test the predict endpoint with proper JSON formatting
+curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
     "search_query": "bicycle in san diego",

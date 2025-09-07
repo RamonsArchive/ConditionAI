@@ -42,6 +42,9 @@ class GoodDealsConditionAPI(LitAPI):
         self.clip_loaded = False
         self.ollama_available = False
         
+        # Store detected object from setup - will be set once
+        self.detected_object = "an item"  # Default fallback
+        
         # Simple cache - will be recreated in each worker process
         self.image_cache = {}
     
@@ -58,6 +61,9 @@ class GoodDealsConditionAPI(LitAPI):
         
         # Check Ollama (happens in worker process)  
         self.ollama_available = self._test_ollama()
+        
+        # Set default detected object (will be overridden by first request)
+        self.detected_object = "an item"
         
         print(f"Worker {os.getpid()}: CLIP={self.clip_loaded}, Ollama={self.ollama_available}")
     
@@ -105,17 +111,25 @@ class GoodDealsConditionAPI(LitAPI):
         if not request.results:
             return ConditionResponse(results=[], processing_time=0, total_processed=0)
         
-        print(f"🔍 Processing request with query: {request.search_query}")
+        # Check if setup has been called (for single worker mode)
+        if not hasattr(self, 'model') or self.model is None:
+            print("🔧 Setup not called yet - calling setup manually...")
+            self.setup("cpu")
         
-        # Object detection for each request (as you intended)
-        if request.search_query:
+        # Object detection - only if we don't have one stored yet
+        if self.detected_object == "an item" and request.search_query:
+            print(f"🔍 First request - detecting object from: {request.search_query}")
             if self.ollama_available:
                 object_data = self._detect_with_ollama(request.search_query)
             else:
                 object_data = self._detect_fallback(request.search_query)
-            print(f"✅ Detected object: {object_data['detected_object']}")
+            
+            # Store for future requests
+            self.detected_object = object_data['detected_object']
+            print(f"✅ Stored detected object: {self.detected_object}")
         else:
-            object_data = {'detected_object': "an item"}
+            print(f"♻️ Reusing stored object: {self.detected_object}")
+            object_data = {'detected_object': self.detected_object}
         
         # Process items
         enhanced_results = []
@@ -131,7 +145,50 @@ class GoodDealsConditionAPI(LitAPI):
     
     def encode_response(self, output: ConditionResponse) -> Dict[str, Any]:
         """LitServer calls this automatically"""
+        # Save results to CSV file
+        self._save_results_to_csv(output)
         return output.model_dump()
+    
+    def _save_results_to_csv(self, output: ConditionResponse):
+        """Save results to CSV file for local extraction"""
+        try:
+            import pandas as pd
+            import os
+            from datetime import datetime
+            
+            # Create results directory if it doesn't exist
+            os.makedirs('/app/results', exist_ok=True)
+            
+            # Convert results to DataFrame
+            results_data = []
+            for item in output.results:
+                results_data.append({
+                    'id': item.id,
+                    'title': item.title,
+                    'price': item.price,
+                    'source': item.source,
+                    'image': item.image,
+                    'location': item.location,
+                    'url': item.url,
+                    'miles': item.miles,
+                    'detected_object': item.detected_object,
+                    'condition': item.condition,
+                    'condition_confidence': item.condition_confidence,
+                    'processing_time': output.processing_time,
+                    'total_processed': output.total_processed,
+                    'timestamp': datetime.now().isoformat()
+                })
+            
+            # Create DataFrame and save to CSV
+            df = pd.DataFrame(results_data)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            csv_path = f'/app/results/api_results_{timestamp}.csv'
+            df.to_csv(csv_path, index=False)
+            
+            print(f"💾 Results saved to: {csv_path}")
+            
+        except Exception as e:
+            print(f"❌ Error saving results to CSV: {e}")
     
     def _process_item(self, item: ListingItem, object_data: Dict) -> EnhancedListingItem:
         """Process single item"""
@@ -186,43 +243,21 @@ class GoodDealsConditionAPI(LitAPI):
             return {'condition': "unknown", 'condition_confidence': 0.0}
     
     def _detect_with_ollama(self, search_query: str) -> Dict:
-        """Object detection with Ollama - IMPROVED PROMPT"""
+        """Object detection with Ollama"""
         try:
-            # Much clearer prompt that focuses on the main object
             payload = {
                 "model": "llama3.2:1b",
-                "prompt": f"""Extract the main object being searched for. Return ONLY the object name, nothing else.
-
-Examples:
-"bicycle in san diego" -> bicycle
-"used car near me" -> car  
-"phone for sale" -> phone
-"vintage bike" -> bike
-"laptop computer" -> laptop
-
-Query: "{search_query}"
-Object:""",
-                "stream": False,
-                "options": {
-                    "temperature": 0,  # More deterministic
-                    "top_p": 0.1      # Focus on most likely tokens
-                }
+                "prompt": f"What object is being searched for? One word only. Example bike in san diego: bike. Example vintage bicycle for sale: bicycle. Example used car near me: car. Output one word only: {search_query}",
+                "stream": False
             }
             
             response = requests.post("http://localhost:11434/api/generate", json=payload, timeout=15)
             
             if response.status_code == 200:
                 object_type = response.json()["response"].strip().lower()
-                # Clean up the response
-                object_type = object_type.replace('.', '').replace(',', '').replace(':', '').strip()
-                # Take only the first word if multiple words
-                object_type = object_type.split()[0] if object_type.split() else ""
-                
+                object_type = object_type.replace('.', '').replace(',', '').strip()
                 if object_type and object_type.isalpha():
-                    print(f"🎯 Ollama detected: '{object_type}' from '{search_query}'")
                     return {'detected_object': f"a {object_type}"}
-                else:
-                    print(f"⚠️ Ollama returned invalid: '{object_type}', using fallback")
             
         except Exception as e:
             print(f"Ollama error: {e}")
@@ -243,28 +278,33 @@ Object:""",
             return {'detected_object': "an item"}
 
 
-# SIMPLIFIED MAIN - Let LitServer handle everything
+# CRITICAL: Clean main section that avoids pickle issues
 if __name__ == "__main__":
-    # Create API instance
+    import os
+    
+    # Create API instance with NO model loading
     api = GoodDealsConditionAPI()
     
-    # Create server - LitServer will call setup() automatically
+    # DO NOT call setup() here - it will cause pickle errors!
+    # LitServer will call setup() in each worker process
+    
+    # Create server
     server = LitServer(
         api,
-        accelerator="cpu",
-        workers_per_device=1,
+        accelerator="cpu",  # Avoid CUDA issues
+        workers_per_device=1,  # Single worker
         timeout=60
     )
     
-    # Add health check endpoint
     @server.app.get("/health")
     async def health():
         return {"status": "healthy"}
     
     print("Starting LitServer...")
-    print("Setup will be called automatically by LitServer")
+    print("Models will be loaded automatically in worker processes")
     print("Available endpoints:")
     print("  GET  /health - Health check")
-    print("  POST /predict - Main endpoint (use this one)")
+    print("  POST /predict - Default LitServe endpoint")
     
+    # This will work without pickle errors
     server.run(port=8000, host="0.0.0.0")
