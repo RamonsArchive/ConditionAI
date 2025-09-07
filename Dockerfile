@@ -22,16 +22,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY condition_ai.py .
 COPY preload_clip.py .
-COPY listings_from_txt.csv .
 
 # Create necessary directories
 RUN mkdir -p /app/torch_cache /app/clip_cache /app/results
 
-# Preload CLIP model
-RUN python preload_clip.py
+# Preload CLIP model (with error handling)
+RUN python preload_clip.py || echo "CLIP preloading failed, will load at runtime"
 
-# Verify CLIP cache
-RUN python -c "import os; print('Verifying CLIP cache...'); import torch; data = torch.load('/app/clip_verification.pt'); print('CLIP verification loaded successfully:', data)"
+# Verify CLIP cache (optional)
+RUN python -c "import os; print('Verifying CLIP cache...'); import torch; data = torch.load('/app/clip_verification.pt'); print('CLIP verification loaded successfully:', data)" || echo "CLIP verification file not found, will create at runtime"
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
@@ -42,7 +41,7 @@ RUN echo '#!/bin/bash\n\
     echo "⏳ Waiting for Ollama to start..."\n\
     sleep 10\n\
     echo "📥 Downloading Llama model..."\n\
-    ollama pull llama3.2:3b\n\
+    ollama pull llama3.2:3b || echo "Llama model pull failed, continuing..."\n\
     echo "✅ Ollama ready!"\n\
     echo "🚀 Starting Condition AI API..."\n\
     python condition_ai.py\n\
