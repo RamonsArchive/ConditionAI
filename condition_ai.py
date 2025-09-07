@@ -168,12 +168,12 @@ class GoodDealsConditionAPI(LitAPI):
             # Prepare image for CLIP
             image_tensor = self.preprocess(image).unsqueeze(0).to(self.device)
             
-            # Define condition prompts
+            # Define condition prompts using quality-based framing
             condition_prompts = [
-                f"a {detected_object} in excellent condition",
-                f"a {detected_object} in good condition", 
-                f"a {detected_object} in fair condition",
-                f"a {detected_object} in poor condition"
+                f"Pristine {detected_object} like never used",
+                f"Excellent {detected_object} like new", 
+                f"Good {detected_object} used condition",
+                f"Bad {detected_object} damaged"
             ]
             
             # Get CLIP predictions
@@ -186,7 +186,7 @@ class GoodDealsConditionAPI(LitAPI):
                 condition_scores = similarities[0].cpu().numpy()
             
             # Determine condition
-            conditions = ['excellent', 'good', 'fair', 'poor']
+            conditions = ['Pristine', 'Excellent', 'Good', 'Bad']
             best_idx = condition_scores.argmax()
             condition = conditions[best_idx]
             confidence = float(condition_scores[best_idx])
@@ -201,23 +201,28 @@ class GoodDealsConditionAPI(LitAPI):
         """Detect object using Ollama"""
         try:
             if not self.ollama_available:
+                print("Ollama not available, using fallback")
                 return self._detect_fallback(search_query)
             
             prompt = f"Extract the main object from this search query: '{search_query}'. Return only the object name, nothing else."
+            print(f"Calling Ollama with prompt: {prompt}")
             
             response = requests.post(
-                "http://localhost:11434/api/generate",
+                "http://127.0.0.1:11434/api/generate",
                 json={
                     "model": "llama3.2:3b",
                     "prompt": prompt,
                     "stream": False
                 },
-                timeout=10
+                timeout=30  # Increased timeout
             )
+            
+            print(f"Ollama response status: {response.status_code}")
             
             if response.status_code == 200:
                 result = response.json()
                 detected_object = result.get('response', '').strip().lower()
+                print(f"Ollama detected object: {detected_object}")
                 
                 # Clean up the response
                 if detected_object:
@@ -229,6 +234,7 @@ class GoodDealsConditionAPI(LitAPI):
                     
                     return {'detected_object': f"a {detected_object}"}
             
+            print("Ollama response not successful, using fallback")
             return self._detect_fallback(search_query)
             
         except Exception as e:
@@ -238,18 +244,24 @@ class GoodDealsConditionAPI(LitAPI):
     def _detect_fallback(self, search_query: str) -> Dict[str, Any]:
         """Fallback object detection"""
         query_lower = search_query.lower()
+        print(f"Using fallback detection for query: '{search_query}'")
         
         # Simple keyword matching
         if 'bike' in query_lower or 'bicycle' in query_lower:
-            return {'detected_object': 'a bike'}
+            result = {'detected_object': 'a bike'}
         elif 'car' in query_lower or 'vehicle' in query_lower:
-            return {'detected_object': 'a car'}
+            result = {'detected_object': 'a car'}
         elif 'phone' in query_lower or 'iphone' in query_lower:
-            return {'detected_object': 'a phone'}
+            result = {'detected_object': 'a phone'}
         elif 'laptop' in query_lower or 'computer' in query_lower:
-            return {'detected_object': 'a laptop'}
+            result = {'detected_object': 'a laptop'}
+        elif 'coffee' in query_lower and 'table' in query_lower:
+            result = {'detected_object': 'a coffee table'}
         else:
-            return {'detected_object': 'an item'}
+            result = {'detected_object': 'an item'}
+        
+        print(f"Fallback detected: {result['detected_object']}")
+        return result
 
 if __name__ == "__main__":
     # Create API instance
